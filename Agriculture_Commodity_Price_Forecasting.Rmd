@@ -1,0 +1,532 @@
+
+---
+title: "Agriculture Commodity Price Forecasting"
+author: "Chandan Kumar"
+date: "2026-11-24"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    number_sections: true
+---
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 9,
+  fig.height = 5
+)
+```
+
+# Introduction
+
+Agriculture plays an important role in India's economy. Agricultural commodity prices frequently fluctuate due to changes in production, supply, demand, weather conditions, transportation and international trade.
+
+The project titled "Agriculture Commodity Price Forecasting" aims to analyse historical agricultural commodity prices and develop a data-driven system to forecast future national prices.
+
+This project considers five agricultural commodities: Onion, Tomato, Wheat, Rice and Potato.
+
+The analysis uses production quantity, mandi arrivals, weather information, import and export quantities, wholesale prices and retail prices.
+
+The project also examines mandi-to-retail price transmission and identifies procurement and hedging implications for agribusiness buyers.
+
+# Problem Statement
+
+Agricultural commodity prices are highly volatile and depend on several economic and environmental factors.
+
+Farmers, traders, retailers and agribusiness buyers face difficulties in making purchasing and selling decisions due to uncertainty in future market prices.
+
+Traditional market analysis may not adequately capture the relationship between production, market arrivals, weather and international trade.
+
+Therefore, this project aims to use descriptive analytics and machine learning techniques to analyse agricultural price movements and forecast national commodity prices for the next 30 days.
+
+# Objectives of the Project
+
+The main objectives are:
+
+1. To analyse historical prices of five agricultural commodities.
+2. To compare commodity prices across different states and mandis.
+3. To study the relationship between production and market arrivals.
+4. To examine the influence of weather on commodity prices.
+5. To analyse import and export patterns.
+6. To examine wholesale-to-retail price transmission.
+7. To develop a 30-day national price forecasting model.
+8. To provide procurement and hedging insights for agribusiness buyers.
+
+# Dataset Description
+
+The dataset contains agricultural market information for five commodities: Onion, Tomato, Wheat, Rice and Potato.
+
+It includes information about different states, districts, agricultural markets, arrival dates, minimum prices, maximum prices, modal prices, production, mandi arrivals, retail prices, weather conditions, imports and exports.
+
+The dataset will be used for descriptive statistical analysis, data visualization, correlation analysis and price forecasting.
+
+
+# Data Import and Initial Inspection
+
+```{r import-data}
+library(tidyverse)
+library(lubridate)
+
+# Import agricultural dataset
+agri_data <- read_csv(
+  "C:/CNT05 Project/agricultural_commodity_price_dataset.csv",
+  show_col_types = FALSE
+)
+
+# Display first six records
+head(agri_data)
+
+# Display dataset structure
+str(agri_data)
+
+# Display dataset dimensions
+dim(agri_data)
+
+# Display column names
+colnames(agri_data)
+```
+
+# Data Cleaning and Preparation
+
+```{r data-cleaning}
+# Check missing values in each column
+colSums(is.na(agri_data))
+
+# Check duplicate records
+sum(duplicated(agri_data))
+
+# Check data types
+sapply(agri_data, class)
+
+# Check unique commodities
+unique(agri_data$commodity)
+
+# Check number of states and markets
+n_distinct(agri_data$state)
+n_distinct(agri_data$market)
+
+# Convert categorical columns into factors
+agri_data <- agri_data %>%
+  mutate(
+    commodity = as.factor(commodity),
+    state = as.factor(state),
+    district = as.factor(district),
+    market = as.factor(market),
+    season = as.factor(season)
+  )
+
+# Display cleaned dataset
+glimpse(agri_data)
+```
+
+# Descriptive Statistics
+
+
+```{r descriptive-statistics}
+# Summary of numerical variables
+summary(agri_data %>%
+          select(min_price, max_price, modal_price,
+                 retail_price, production, arrivals,
+                 imports, exports, temperature, rainfall))
+
+# Average modal price by commodity
+commodity_summary <- agri_data %>%
+  group_by(commodity) %>%
+  summarise(
+    Average_Price = mean(modal_price, na.rm = TRUE),
+    Minimum_Price = min(modal_price, na.rm = TRUE),
+    Maximum_Price = max(modal_price, na.rm = TRUE),
+    Average_Retail_Price = mean(retail_price, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+commodity_summary
+```
+
+## Interpretation of Descriptive Statistics
+
+The descriptive statistical analysis provides an overview of agricultural commodity prices and their related factors.
+
+The average modal price across the dataset is ₹2,540 per quintal, while the average retail price is ₹32.72 per kilogram. The modal price ranges from ₹1,144 to ₹4,606 per quintal, indicating considerable variation in market prices.
+
+Average production is approximately 178,326 tonnes, and average mandi arrivals are 444.2 tonnes. The average temperature is 26.84°C, while average rainfall is 72.25 mm.
+
+Imports and exports also show considerable variation, suggesting differences in trade activity across observations.
+
+These findings provide an initial understanding of price variation, agricultural supply, weather conditions and trade patterns. Further commodity-wise and time-series analysis is required to identify individual commodity trends and forecasting relationships.
+
+
+# Commodity-wise Price Analysis
+
+```{r commodity-price-chart}
+# Calculate average modal price for each commodity
+commodity_price <- agri_data %>%
+  group_by(commodity) %>%
+  summarise(
+    average_price = mean(modal_price, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Display results
+commodity_price
+
+# Create bar chart
+ggplot(commodity_price,
+       aes(x = commodity, y = average_price)) +
+  geom_col(fill = "steelblue") +
+  geom_text(
+    aes(label = round(average_price, 2)),
+    vjust = -0.5
+  ) +
+  labs(
+    title = "Average Modal Price by Commodity",
+    x = "Agricultural Commodity",
+    y = "Average Modal Price (INR/Quintal)"
+  ) +
+  theme_minimal()
+```
+
+## Interpretation of Commodity-wise Price Analysis
+
+The commodity-wise analysis shows that Rice has the highest average modal price at ₹3,258.10 per quintal, followed by Tomato at ₹2,748.39 and Wheat at ₹2,593.96. Onion has an average modal price of ₹2,313.54, while Potato has the lowest average at ₹1,788.04 per quintal.
+
+These differences indicate that agricultural commodities have different market price levels. Rice and Tomato show relatively higher average prices, whereas Potato has a comparatively lower average price.
+
+This analysis provides a useful baseline for understanding price differences among commodities. However, average prices alone do not explain seasonal fluctuations or future price movements.
+
+
+# Monthly Price Trend Analysis
+
+```{r monthly-price-trend}
+# Calculate monthly average price
+monthly_price <- agri_data %>%
+  mutate(
+    month_date = floor_date(arrival_date, unit = "month")
+  ) %>%
+  group_by(commodity, month_date) %>%
+  summarise(
+    average_price = mean(modal_price, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Display monthly results
+print(monthly_price, n = 20)
+
+# Plot monthly price trends
+ggplot(monthly_price,
+       aes(x = month_date,
+           y = average_price,
+           color = commodity)) +
+  geom_line(linewidth = 0.9) +
+  geom_point(size = 1.5) +
+  labs(
+    title = "Monthly Agricultural Commodity Price Trends",
+    x = "Month",
+    y = "Average Modal Price (INR/Quintal)",
+    color = "Commodity"
+  ) +
+  theme_minimal()
+```
+
+# Seasonal Price Analysis
+
+```{r seasonal-analysis}
+# Calculate average price by commodity and season
+seasonal_price <- agri_data %>%
+  group_by(commodity, season) %>%
+  summarise(
+    average_price = mean(modal_price, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Display seasonal price table
+print(seasonal_price, n = Inf)
+
+# Create seasonal comparison chart
+ggplot(seasonal_price,
+       aes(x = season,
+           y = average_price,
+           fill = commodity)) +
+  geom_col(position = "dodge") +
+  labs(
+    title = "Seasonal Price Comparison of Agricultural Commodities",
+    x = "Season",
+    y = "Average Modal Price (INR/Quintal)",
+    fill = "Commodity"
+  ) +
+  theme_minimal()
+```
+
+# State-wise Price Analysis
+
+```{r state-analysis}
+state_price <- agri_data %>%
+  group_by(commodity, state) %>%
+  summarise(
+    average_price = mean(modal_price, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+print(state_price, n = Inf)
+
+# State-wise price visualization
+ggplot(state_price,
+       aes(x = state,
+           y = average_price,
+           fill = commodity)) +
+  geom_col(position = "dodge") +
+  labs(
+    title = "Average Commodity Prices Across States",
+    x = "State",
+    y = "Average Modal Price (INR/Quintal)",
+    fill = "Commodity"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+```
+
+## Interpretation of Seasonal and State-wise Price Analysis
+
+The seasonal analysis indicates that summer has the highest average modal prices for all five agricultural commodities: Onion, Potato, Rice, Tomato and Wheat. Post-monsoon has the lowest average prices across the same commodities.
+
+The state-wise analysis shows geographical variation in commodity prices. Rajasthan records the highest average prices for all five commodities, whereas Karnataka records the lowest average prices in this dataset.
+
+These variations may be associated with differences in supply, demand, production, transportation and seasonal conditions. Further analysis is required to determine the relationships between these factors and commodity prices.
+
+The results highlight the importance of considering seasonal and geographical factors when developing agricultural commodity price forecasting models.
+
+# Correlation Analysis
+
+```{r correlation-analysis}
+
+# Select numerical variables
+correlation_data <- agri_data %>%
+  select(
+    modal_price,
+    retail_price,
+    production,
+    arrivals,
+    temperature,
+    rainfall,
+    imports,
+    exports
+  )
+
+# Calculate correlation matrix
+cor_matrix <- cor(
+  correlation_data,
+  use = "complete.obs",
+  method = "pearson"
+)
+
+# Display correlation matrix
+round(cor_matrix, 2)
+
+# Convert correlation matrix into a data frame
+library(reshape2)
+
+cor_long <- melt(cor_matrix)
+
+# Create correlation heatmap
+ggplot(cor_long,
+       aes(x = Var1, y = Var2, fill = value)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = round(value, 2)), size = 3) +
+  scale_fill_gradient2(
+    low = "blue",
+    mid = "white",
+    high = "red",
+    midpoint = 0,
+    limits = c(-1, 1)
+  ) +
+  labs(
+    title = "Correlation Heatmap of Agricultural Variables",
+    x = "",
+    y = "",
+    fill = "Correlation"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+
+```
+
+## Interpretation of Correlation Analysis
+
+The correlation analysis examines the linear relationships between agricultural commodity prices and selected influencing variables.
+
+The strongest positive correlation is observed between modal price and retail price, with a coefficient of 0.96. Exports have a moderate positive correlation with modal price (0.46), while imports show a weak positive correlation (0.24).
+
+Production (0.15) and temperature (0.10) have weak positive relationships with modal price. Arrivals (0.05) show almost no overall linear relationship, whereas rainfall (-0.08) has a very weak negative relationship.
+
+These findings provide an initial understanding of the relationships between market prices and agricultural factors. However, correlation does not establish causation. Commodity-specific and time-series analysis is required before selecting variables for the forecasting model.
+
+# Commodity-wise Correlation Analysis
+
+```{r commodity-correlation}
+
+commodity_correlation <- agri_data %>%
+  group_by(commodity) %>%
+  summarise(
+    Price_Retail = cor(modal_price, retail_price,
+                       use = "complete.obs"),
+    Price_Production = cor(modal_price, production,
+                           use = "complete.obs"),
+    Price_Arrivals = cor(modal_price, arrivals,
+                         use = "complete.obs"),
+    Price_Temperature = cor(modal_price, temperature,
+                            use = "complete.obs"),
+    Price_Rainfall = cor(modal_price, rainfall,
+                         use = "complete.obs"),
+    Price_Imports = cor(modal_price, imports,
+                        use = "complete.obs"),
+    Price_Exports = cor(modal_price, exports,
+                        use = "complete.obs"),
+    .groups = "drop"
+  )
+
+print(commodity_correlation, n = Inf)
+print(commodity_correlation, width = Inf)
+```
+
+# Check Monthly Data Availability
+
+```{r monthly-data}
+
+monthly_data_check <- agri_data %>%
+  mutate(month_date = lubridate::floor_date(arrival_date, "month")) %>%
+  group_by(commodity) %>%
+  summarise(
+    Total_Records = n(),
+    First_Date = min(arrival_date, na.rm = TRUE),
+    Last_Date = max(arrival_date, na.rm = TRUE),
+    Distinct_Months = n_distinct(month_date),
+    .groups = "drop"
+  )
+
+print(monthly_data_check)
+```
+
+# Check Market-Level Observations
+
+```{r market-level}
+
+market_check <- agri_data %>%
+  mutate(month_date = lubridate::floor_date(arrival_date, "month")) %>%
+  group_by(commodity, month_date) %>%
+  summarise(
+    Records = n(),
+    Unique_Markets = n_distinct(market),
+    Unique_States = n_distinct(state),
+    .groups = "drop"
+  )
+
+print(market_check, n = 20)
+```
+
+# National Monthly Price Aggregation
+
+```{r monthly-price}
+
+weighted_avg <- function(price, arrivals) {
+  valid <- !is.na(price) & !is.na(arrivals) &
+           is.finite(price) & is.finite(arrivals) &
+           arrivals > 0
+
+  if (!any(valid)) {
+    return(NA_real_)
+  }
+
+  weighted.mean(price[valid], arrivals[valid])
+}
+
+national_monthly <- agri_data %>%
+  mutate(
+    month_date = lubridate::floor_date(arrival_date, "month")
+  ) %>%
+  group_by(commodity, month_date) %>%
+  summarise(
+    national_modal_price = weighted_avg(modal_price, arrivals),
+
+    national_retail_price = weighted_avg(retail_price, arrivals),
+
+    total_arrivals = sum(arrivals, na.rm = TRUE),
+
+    avg_production = mean(production, na.rm = TRUE),
+
+    avg_temperature = mean(temperature, na.rm = TRUE),
+
+    avg_rainfall = mean(rainfall, na.rm = TRUE),
+
+    avg_imports = mean(imports, na.rm = TRUE),
+
+    avg_exports = mean(exports, na.rm = TRUE),
+
+    .groups = "drop"
+  )
+
+print(national_monthly, n = 20)
+```
+
+# National Monthly Price Trends
+
+```{r national_monthly-price}
+
+ggplot(national_monthly,
+       aes(x = month_date,
+           y = national_modal_price,
+           color = commodity)) +
+
+  geom_line(linewidth = 0.8) +
+
+  geom_point(size = 1.2) +
+
+  labs(
+    title = "National Monthly Agricultural Commodity Price Trends",
+    subtitle = "Arrivals-weighted modal prices, 2023–2025",
+    x = "Month",
+    y = "Price (₹ per quintal)",
+    color = "Commodity"
+  ) +
+
+  theme_minimal()
+```
+
+# Install and Load Forecasting Packages
+
+```{r install-lode}
+
+if (!requireNamespace("forecast", quietly = TRUE)) {
+  install.packages("forecast")
+}
+
+library(forecast)
+library(dplyr)
+library(ggplot2)
+```
+
+# Split Data into Training and Testing
+
+```{r train-test}
+
+train_data <- national_monthly %>%
+  filter(month_date <= as.Date("2025-06-01"))
+
+test_data <- national_monthly %>%
+  filter(month_date >= as.Date("2025-07-01"))
+
+# Check observations
+train_data %>%
+  count(commodity)
+
+test_data %>%
+  count(commodity)
+```
